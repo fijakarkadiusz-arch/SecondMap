@@ -1,15 +1,7 @@
-# SecondMap PWA
+SecondMap v2
+- dynamiczne pobieranie prawdziwych miejsc z OpenStreetMap
+- wyszukiwarka, filtry, ulubione, nawigacja
+- dodawanie własnych miejsc
+- PWA / instalacja na telefonie
 
-To jest wersja instalowalna jako aplikacja webowa.
-
-## Jak uruchomić
-Nie otwieraj `index.html` bezpośrednio z plików, jeśli chcesz instalować aplikację jako PWA.
-Pliki trzeba umieścić na hostingu obsługującym HTTPS.
-
-Najprościej:
-1. wrzuć cały folder na hosting,
-2. otwórz adres strony w Chrome na Androidzie,
-3. wybierz „Zainstaluj aplikację” / „Dodaj do ekranu głównego”.
-
-## Uwaga
-Mapa korzysta z OpenStreetMap i wymaga internetu do pobierania kafelków mapy.
+Dane OpenStreetMap są pobierane przez Overpass API. Pokrycie zależy od tego, czy dany sklep został poprawnie dodany do OSM.

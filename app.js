@@ -1,40 +1,160 @@
 const seed=[
-{name:"Vintage Store",city:"Warszawa",type:"Vintage",lat:52.2297,lng:21.0122,info:"Wyselekcjonowana odzież vintage"},
-{name:"Second Hand Centrum",city:"Kraków",type:"Second hand",lat:50.0647,lng:19.9450,info:"Odzież używana • dostawy co tydzień"},
-{name:"Lump na Jeżycach",city:"Poznań",type:"Second hand",lat:52.4100,lng:16.9000,info:"Duży wybór • sprzedaż na sztuki"},
-{name:"Szafa Vintage",city:"Wrocław",type:"Vintage",lat:51.1079,lng:17.0385,info:"Vintage • streetwear"},
-{name:"Second Look",city:"Gdańsk",type:"Second hand",lat:54.3520,lng:18.6466,info:"Odzież damska i męska"},
-{name:"Retro Szafa",city:"Łódź",type:"Vintage",lat:51.7592,lng:19.4560,info:"Moda retro • akcesoria"},
-{name:"Lump Silesia",city:"Katowice",type:"Second hand",lat:50.2649,lng:19.0238,info:"Odzież na wagę"},
-{name:"Outlet Mix",city:"Lublin",type:"Outlet",lat:51.2465,lng:22.5684,info:"Końcówki kolekcji • outlet"},
-{name:"Druga Szansa",city:"Szczecin",type:"Second hand",lat:53.4285,lng:14.5528,info:"Second hand • akcesoria"},
-{name:"Vintage Bydgoszcz",city:"Bydgoszcz",type:"Vintage",lat:53.1235,lng:18.0084,info:"Vintage i denim"}
+{name:"Vintage Store",city:"Warszawa",type:"Vintage",lat:52.2297,lng:21.0122,info:"Przykładowe miejsce"},
+{name:"Second Hand Centrum",city:"Kraków",type:"Second hand",lat:50.0647,lng:19.9450,info:"Przykładowe miejsce"},
+{name:"Lump na Jeżycach",city:"Poznań",type:"Second hand",lat:52.4100,lng:16.9000,info:"Przykładowe miejsce"},
+{name:"Szafa Vintage",city:"Wrocław",type:"Vintage",lat:51.1079,lng:17.0385,info:"Przykładowe miejsce"},
+{name:"Second Look",city:"Gdańsk",type:"Second hand",lat:54.3520,lng:18.6466,info:"Przykładowe miejsce"},
+{name:"Retro Szafa",city:"Łódź",type:"Vintage",lat:51.7592,lng:19.4560,info:"Przykładowe miejsce"},
+{name:"Lump Silesia",city:"Katowice",type:"Second hand",lat:50.2649,lng:19.0238,info:"Przykładowe miejsce"},
+{name:"Outlet Mix",city:"Lublin",type:"Outlet",lat:51.2465,lng:22.5684,info:"Przykładowe miejsce"},
+{name:"Druga Szansa",city:"Szczecin",type:"Second hand",lat:53.4285,lng:14.5528,info:"Przykładowe miejsce"},
+{name:"Vintage Bydgoszcz",city:"Bydgoszcz",type:"Vintage",lat:53.1235,lng:18.0084,info:"Przykładowe miejsce"}
 ];
+
 let places=[...seed,...JSON.parse(localStorage.getItem("lumpPlaces")||"[]")];
+let filter="all", query="", markers=[], osmCache=new Map(), favorites=new Set(JSON.parse(localStorage.getItem("favorites")||"[]"));
+let loading=false, lastQueryKey="";
+
 const map=L.map("map",{zoomControl:false}).setView([52.05,19.2],6);
 L.control.zoom({position:"bottomright"}).addTo(map);
-L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:'&copy; OpenStreetMap'}).addTo(map);
-let markers=[]; let filter="all"; let query="";
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:'&copy; OpenStreetMap contributors'}).addTo(map);
+
+// Szary świat + kolorowa Polska. Maska ma otwór w kształcie Polski,
+// dzięki czemu szczegółowa mapa pozostaje kolorowa tylko w granicach kraju.
+const polandRing=[
+  [54.84,14.12],[54.28,14.72],[54.05,15.15],[54.02,16.20],[54.35,17.10],
+  [54.82,18.10],[54.83,18.95],[54.46,19.55],[54.35,20.95],[54.42,22.75],
+  [54.10,23.85],[53.52,23.90],[53.10,23.35],[52.80,23.90],[52.20,23.90],
+  [51.70,23.55],[51.20,23.95],[50.55,23.35],[49.82,22.85],[49.00,22.65],
+  [49.00,21.05],[49.45,20.30],[49.50,19.20],[49.60,18.20],[49.95,17.05],
+  [50.35,16.05],[50.70,15.00],[51.20,14.75],[51.55,14.15],[52.05,14.12],
+  [52.75,14.12],[53.45,14.25],[53.95,14.15],[54.40,14.12],[54.84,14.12]
+];
+const worldRing=[[-89,-179],[-89,179],[89,179],[89,-179],[-89,-179]];
+L.polygon([worldRing,polandRing],{
+  stroke:false,fillColor:'#5d5d5d',fillOpacity:.92,fillRule:'evenodd',interactive:false,className:'world-mask'
+}).addTo(map);
+L.polygon(polandRing,{color:'#ffffff',weight:3,opacity:.95,fill:false,interactive:false,className:'poland-border'}).addTo(map);
+
 const icon=()=>L.divIcon({className:"",html:'<div class="marker"><span>L</span></div>',iconSize:[30,30],iconAnchor:[15,29]});
-function visible(p){return (filter==="all"||p.type.toLowerCase()===filter)&&(`${p.name} ${p.city}`.toLowerCase().includes(query))}
-function render(){
- markers.forEach(m=>map.removeLayer(m)); markers=[];
- const list=document.getElementById("list"); list.innerHTML="";
- const shown=places.filter(visible); document.getElementById("count").textContent=`${shown.length} ${shown.length===1?"miejsce":"miejsc"}`;
- shown.forEach(p=>{
-   const m=L.marker([p.lat,p.lng],{icon:icon()}).addTo(map).bindPopup(`<div class="popup"><h3>${p.name}</h3><p>${p.city} • ${p.type}</p><p>${p.info||"Lumpeks / sklep z odzieżą używaną"}</p></div>`); markers.push(m);
-   const el=document.createElement("article"); el.className="card"; el.innerHTML=`<div class="cardTop"><div><h3>${p.name}</h3><p>${p.city}</p></div><span class="badge">${p.type}</span></div><p class="meta">${p.info||"Sklep z odzieżą używaną"}</p>`;
-   el.onclick=()=>{map.setView([p.lat,p.lng],14);m.openPopup()}; list.appendChild(el);
- });
+const status=document.getElementById("status");
+
+function saveFavorites(){localStorage.setItem("favorites",JSON.stringify([...favorites]));}
+function keyFor(p){return `${p.lat.toFixed(5)},${p.lng.toFixed(5)}`;}
+function isFavorite(p){return favorites.has(keyFor(p));}
+function mapsUrl(p){return `https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lng}`;}
+
+function normalizeOSM(e){
+  const t=e.tags||{};
+  const lat=e.lat ?? e.center?.lat, lng=e.lon ?? e.center?.lon;
+  if(lat==null||lng==null) return null;
+  let type="Second hand";
+  if(t.shop==="vintage" || /vintage/i.test(t.name||"")) type="Vintage";
+  if(t.shop==="outlet" || /outlet/i.test(t.name||"")) type="Outlet";
+  const address=[t["addr:street"],t["addr:housenumber"],t["addr:postcode"],t["addr:city"]].filter(Boolean).join(" ");
+  return {
+    name:t.name||"Second hand",
+    city:t["addr:city"]||t["addr:town"]||t["addr:village"]||"",
+    type, lat, lng,
+    info: address || "Dane z OpenStreetMap",
+    address,
+    website:t.website||t["contact:website"]||"",
+    phone:t.phone||t["contact:phone"]||"",
+    hours:t.opening_hours||""
+  };
 }
+
+async function loadRealPlaces(){
+  if(map.getZoom()<8){
+    status.textContent="Przybliż mapę do poziomu 8+, aby pobrać prawdziwe miejsca z OpenStreetMap.";
+    return;
+  }
+  const b=map.getBounds();
+  const south=Math.max(49.0,b.getSouth()), west=Math.max(14.0,b.getWest());
+  const north=Math.min(55.0,b.getNorth()), east=Math.min(24.5,b.getEast());
+  if(north-south>3.0 || east-west>4.0){
+    status.textContent="Obszar jest za duży. Przybliż mapę jeszcze trochę.";
+    return;
+  }
+  const key=[south.toFixed(2),west.toFixed(2),north.toFixed(2),east.toFixed(2)].join(",");
+  if(osmCache.has(key)){mergeOSM(osmCache.get(key));return;}
+  if(loading || key===lastQueryKey)return;
+  loading=true; lastQueryKey=key; status.textContent="Pobieram prawdziwe miejsca…";
+  const q=`[out:json][timeout:25];(
+nwr["shop"="second_hand"](${south},${west},${north},${east});
+nwr["second_hand"~"^(yes|only)$"](${south},${west},${north},${east});
+nwr["shop"="vintage"](${south},${west},${north},${east});
+nwr["shop"="clothes"]["name"~"second hand|lumpeks|ciucholand|odzież używana|odziez uzywana|szmateks",i](${south},${west},${north},${east});
+);out center tags;`;
+  try{
+    const r=await fetch("https://overpass-api.de/api/interpreter",{method:"POST",body:"data="+encodeURIComponent(q)});
+    if(!r.ok)throw new Error("Overpass error");
+    const data=await r.json();
+    const real=data.elements.map(normalizeOSM).filter(Boolean);
+    osmCache.set(key,real); mergeOSM(real);
+    status.textContent=`Znaleziono ${real.length} prawdziwych miejsc w tym obszarze.`;
+  }catch(err){
+    status.textContent="Nie udało się pobrać danych. Spróbuj ponownie za chwilę.";
+  }finally{loading=false;}
+}
+
+function mergeOSM(real){
+  const custom=places.filter(p=>p.source==="custom");
+  const byKey=new Map();
+  [...seed,...real,...custom].forEach(p=>byKey.set(keyFor(p),p));
+  places=[...byKey.values()];
+  render();
+}
+
+function visible(p){
+  const matchesFilter=filter==="all"||p.type.toLowerCase()===filter;
+  const text=`${p.name} ${p.city} ${p.info} ${p.address||""}`.toLowerCase();
+  return matchesFilter && text.includes(query);
+}
+
+function render(){
+  markers.forEach(m=>map.removeLayer(m)); markers=[];
+  const list=document.getElementById("list"); list.innerHTML="";
+  const shown=places.filter(visible);
+  document.getElementById("count").textContent=`${shown.length} ${shown.length===1?"miejsce":"miejsc"}`;
+  shown.forEach(p=>{
+    const m=L.marker([p.lat,p.lng],{icon:icon()}).addTo(map);
+    const directions=`<a href="${mapsUrl(p)}" target="_blank" rel="noopener">Nawiguj</a>`;
+    const website=p.website?`<a href="${p.website}" target="_blank" rel="noopener">Strona</a>`:"";
+    m.bindPopup(`<div class="popup"><h3>${escapeHtml(p.name)}</h3><p>${escapeHtml(p.city)} • ${escapeHtml(p.type)}</p><p>${escapeHtml(p.address||p.info||"")}</p><div class="actions">${directions}${website}</div></div>`);
+    markers.push(m);
+    const el=document.createElement("article"); el.className="card";
+    const fav=isFavorite(p);
+    el.innerHTML=`<div class="cardTop"><div><h3>${escapeHtml(p.name)}</h3><p>${escapeHtml(p.city)}</p></div><button class="favorite ${fav?"on":""}" title="Ulubione">${fav?"★":"☆"}</button></div>
+      <p class="meta">${escapeHtml(p.address||p.info||"Second hand")}</p>
+      <div class="cardActions"><button class="smallBtn nav">Nawiguj</button><span class="badge">${escapeHtml(p.type)}</span></div>`;
+    el.querySelector(".favorite").onclick=e=>{e.stopPropagation();toggleFavorite(p)};
+    el.querySelector(".nav").onclick=e=>{e.stopPropagation();window.open(mapsUrl(p),"_blank")};
+    el.onclick=()=>{map.setView([p.lat,p.lng],15);m.openPopup()};
+    list.appendChild(el);
+  });
+}
+
+function toggleFavorite(p){
+  const k=keyFor(p); favorites.has(k)?favorites.delete(k):favorites.add(k); saveFavorites(); render();
+}
+function escapeHtml(s){return String(s||"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]));}
+
 render();
 document.querySelectorAll(".chip").forEach(b=>b.onclick=()=>{document.querySelectorAll(".chip").forEach(x=>x.classList.remove("active"));b.classList.add("active");filter=b.dataset.filter;render()});
 document.getElementById("search").oninput=e=>{query=e.target.value.trim().toLowerCase();render()};
 document.getElementById("reset").onclick=()=>map.setView([52.05,19.2],6);
-document.getElementById("locate").onclick=()=>navigator.geolocation?.getCurrentPosition(pos=>map.setView([pos.coords.latitude,pos.coords.longitude],13),()=>alert("Nie udało się pobrać lokalizacji."));
-const dialog=document.getElementById("dialog"); document.getElementById("addBtn").onclick=()=>dialog.showModal();
+document.getElementById("locate").onclick=()=>navigator.geolocation?.getCurrentPosition(pos=>map.setView([pos.coords.latitude,pos.coords.longitude],14),()=>alert("Nie udało się pobrać lokalizacji."));
+document.getElementById("addBtn").onclick=()=>document.getElementById("dialog").showModal();
+
 document.getElementById("placeForm").onsubmit=e=>{
- e.preventDefault();
- const p={name:document.getElementById("name").value,city:document.getElementById("city").value,type:document.getElementById("type").value,lat:+document.getElementById("lat").value,lng:+document.getElementById("lng").value,info:"Dodane przez użytkownika"};
- const custom=JSON.parse(localStorage.getItem("lumpPlaces")||"[]");custom.push(p);localStorage.setItem("lumpPlaces",JSON.stringify(custom));places.push(p);render();dialog.close();e.target.reset();map.setView([p.lat,p.lng],14);
+  e.preventDefault();
+  const p={name:document.getElementById("name").value,city:document.getElementById("city").value,type:document.getElementById("type").value,
+    lat:+document.getElementById("lat").value,lng:+document.getElementById("lng").value,info:"Dodane przez użytkownika",source:"custom"};
+  const custom=JSON.parse(localStorage.getItem("lumpPlaces")||"[]");custom.push(p);localStorage.setItem("lumpPlaces",JSON.stringify(custom));
+  places.push(p);render();document.getElementById("dialog").close();e.target.reset();map.setView([p.lat,p.lng],15);
 };
+
+let timer;
+map.on("moveend",()=>{clearTimeout(timer);timer=setTimeout(loadRealPlaces,500)});
+loadRealPlaces();
