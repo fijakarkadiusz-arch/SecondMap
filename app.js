@@ -60,10 +60,8 @@ async function loadRealPlaces(){
   // Ładujemy cały obszar województwa śląskiego z OpenStreetMap.
   // Relacja administracyjna Śląskiego: 224462 -> area 3600224462.
   // Dzięki temu nie trzeba przesuwać mapy po kawałku, żeby odkrywać sklepy.
-  if(map.getZoom()<7){
-    status.textContent="Przybliż mapę, aby zobaczyć wszystkie lumpeksy na Śląsku.";
-    return;
-  }
+  // Dane Śląska pobieramy automatycznie także przy szerokim widoku mapy.
+  // Nie trzeba już ręcznie przybliżać mapy, żeby punkty się pojawiły.
 
   const key="slaskie-all-v1";
   if(osmCache.has(key)){
