@@ -42,6 +42,7 @@ function normalizeOSM(e){
   let type="Second hand";
   if(t.shop==="vintage" || /vintage/i.test(t.name||"")) type="Vintage";
   if(t.shop==="outlet" || /outlet/i.test(t.name||"")) type="Outlet";
+  if(t.shop==="charity") type="Charity";
   const address=[t["addr:street"],t["addr:housenumber"],t["addr:postcode"],t["addr:city"]].filter(Boolean).join(" ");
   return {
     name:t.name||"Second hand",
@@ -56,37 +57,66 @@ function normalizeOSM(e){
 }
 
 async function loadRealPlaces(){
-  if(map.getZoom()<8){
-    status.textContent="Przybliż mapę do poziomu 8+, aby pobrać prawdziwe miejsca z OpenStreetMap.";
+  // Ładujemy cały obszar województwa śląskiego z OpenStreetMap.
+  // Relacja administracyjna Śląskiego: 224462 -> area 3600224462.
+  // Dzięki temu nie trzeba przesuwać mapy po kawałku, żeby odkrywać sklepy.
+  if(map.getZoom()<7){
+    status.textContent="Przybliż mapę, aby zobaczyć wszystkie lumpeksy na Śląsku.";
     return;
   }
-  const b=map.getBounds();
-  const south=Math.max(49.0,b.getSouth()), west=Math.max(14.0,b.getWest());
-  const north=Math.min(55.0,b.getNorth()), east=Math.min(24.5,b.getEast());
-  if(north-south>3.0 || east-west>4.0){
-    status.textContent="Obszar jest za duży. Przybliż mapę jeszcze trochę.";
+
+  const key="slaskie-all-v1";
+  if(osmCache.has(key)){
+    mergeOSM(osmCache.get(key));
     return;
   }
-  const key=[south.toFixed(2),west.toFixed(2),north.toFixed(2),east.toFixed(2)].join(",");
-  if(osmCache.has(key)){mergeOSM(osmCache.get(key));return;}
-  if(loading || key===lastQueryKey)return;
-  loading=true; lastQueryKey=key; status.textContent="Pobieram prawdziwe miejsca…";
-  const q=`[out:json][timeout:25];(
-nwr["shop"="second_hand"](${south},${west},${north},${east});
-nwr["second_hand"~"^(yes|only)$"](${south},${west},${north},${east});
-nwr["shop"="vintage"](${south},${west},${north},${east});
-nwr["shop"="clothes"]["name"~"second hand|lumpeks|ciucholand|odzież używana|odziez uzywana|szmateks",i](${south},${west},${north},${east});
-);out center tags;`;
+  if(loading || lastQueryKey===key) return;
+
+  loading=true;
+  lastQueryKey=key;
+  status.textContent="Pobieram lumpeksy ze Śląska…";
+
+  const q=`[out:json][timeout:60];
+area(3600224462)->.slaskie;
+(
+  nwr["shop"="second_hand"](area.slaskie);
+  nwr["second_hand"="yes"](area.slaskie);
+  nwr["second_hand"="only"](area.slaskie);
+  nwr["shop"="clothes"]["second_hand"="yes"](area.slaskie);
+  nwr["shop"="clothes"]["second_hand"="only"](area.slaskie);
+  nwr["shop"="vintage"](area.slaskie);
+  nwr["shop"="charity"](area.slaskie);
+  nwr["shop"="clothes"]["name"~"second hand|secondhand|lumpeks|lump|ciucholand|odzież używana|odziez uzywana|szmateks|tania odzież|tania odziez|komis odzież|komis odziez|vintage",i](area.slaskie);
+);
+out center tags;`;
+
   try{
-    const r=await fetch("https://overpass-api.de/api/interpreter",{method:"POST",body:"data="+encodeURIComponent(q)});
-    if(!r.ok)throw new Error("Overpass error");
-    const data=await r.json();
+    const endpoints=[
+      "https://overpass-api.de/api/interpreter",
+      "https://overpass.kumi.systems/api/interpreter"
+    ];
+    let data=null;
+    for(const endpoint of endpoints){
+      try{
+        const r=await fetch(endpoint,{
+          method:"POST",
+          headers:{"Content-Type":"application/x-www-form-urlencoded;charset=UTF-8"},
+          body:"data="+encodeURIComponent(q)
+        });
+        if(r.ok){ data=await r.json(); break; }
+      }catch(_){}
+    }
+    if(!data) throw new Error("Overpass error");
+
     const real=data.elements.map(normalizeOSM).filter(Boolean);
-    osmCache.set(key,real); mergeOSM(real);
-    status.textContent=`Znaleziono ${real.length} prawdziwych miejsc w tym obszarze.`;
+    osmCache.set(key,real);
+    mergeOSM(real);
+    status.textContent=`Znaleziono ${real.length} miejsc ze Śląska. Kliknij punkt, aby zobaczyć szczegóły.`;
   }catch(err){
-    status.textContent="Nie udało się pobrać danych. Spróbuj ponownie za chwilę.";
-  }finally{loading=false;}
+    status.textContent="Nie udało się pobrać danych Śląska. Spróbuj ponownie za chwilę.";
+  }finally{
+    loading=false;
+  }
 }
 
 function mergeOSM(real){
@@ -112,7 +142,9 @@ function render(){
     const m=L.marker([p.lat,p.lng],{icon:icon()}).addTo(map);
     const directions=`<a href="${mapsUrl(p)}" target="_blank" rel="noopener">Nawiguj</a>`;
     const website=p.website?`<a href="${p.website}" target="_blank" rel="noopener">Strona</a>`:"";
-    m.bindPopup(`<div class="popup"><h3>${escapeHtml(p.name)}</h3><p>${escapeHtml(p.city)} • ${escapeHtml(p.type)}</p><p>${escapeHtml(p.address||p.info||"")}</p><div class="actions">${directions}${website}</div></div>`);
+    const phone=p.phone?`<p>📞 ${escapeHtml(p.phone)}</p>`:"";
+    const hours=p.hours?`<p>🕒 ${escapeHtml(p.hours)}</p>`:"";
+    m.bindPopup(`<div class="popup"><h3>${escapeHtml(p.name)}</h3><p>${escapeHtml(p.city)} • ${escapeHtml(p.type)}</p><p>${escapeHtml(p.address||p.info||"")}</p>${phone}${hours}<div class="actions">${directions}${website}</div></div>`);
     markers.push(m);
     const el=document.createElement("article"); el.className="card";
     const fav=isFavorite(p);
