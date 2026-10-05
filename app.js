@@ -11,7 +11,69 @@ const esc=s=>String(s||"").replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&
 const keyFor=p=>`${p.lat.toFixed(5)},${p.lng.toFixed(5)}`; const isFav=p=>favorites.has(keyFor(p)); const saveFav=()=>localStorage.setItem("favorites",JSON.stringify([...favorites]));
 const mapsUrl=p=>`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent((p.address||p.name)+", Katowice, Polska")}`;
 function render(){markers.forEach(m=>map.removeLayer(m));markers=[];const list=document.getElementById("list");list.innerHTML="";const shown=places.filter(p=>(filter==="all"||p.type.toLowerCase()===filter)&&`${p.name} ${p.address||""}`.toLowerCase().includes(query));document.getElementById("count").textContent=`${shown.length} ${shown.length===1?"miejsce":"miejsc"}`;shown.forEach(p=>{const m=L.marker([p.lat,p.lng],{icon:icon()}).addTo(map);m.bindPopup(`<div class="popup"><h3>${esc(p.name)}</h3><p>${esc(p.address||"Katowice")}</p><p>⭐ ${esc(p.rating||"brak oceny")}</p><div class="actions"><a href="${mapsUrl(p)}" target="_blank" rel="noopener">Nawiguj</a></div></div>`);markers.push(m);const el=document.createElement("article");el.className="card";el.innerHTML=`<div class="cardTop"><div><h3>${esc(p.name)}</h3><p>${esc(p.address||"Katowice")}</p></div><button class="favorite ${isFav(p)?"on":""}">${isFav(p)?"★":"☆"}</button></div><p class="meta">⭐ ${esc(p.rating||"brak oceny")} · ${esc(p.type)}</p><div class="cardActions"><button class="smallBtn nav">Otwórz</button><span class="badge">Katowice</span></div>`;el.querySelector(".favorite").onclick=e=>{e.stopPropagation();const k=keyFor(p);favorites.has(k)?favorites.delete(k):favorites.add(k);saveFav();render()};el.querySelector(".nav").onclick=e=>{e.stopPropagation();window.open(mapsUrl(p),"_blank")};el.onclick=()=>{map.setView([p.lat,p.lng],16);m.openPopup()};list.appendChild(el)})}
-async function loadOSM(){if(loading||osmLoaded)return;loading=true;status.textContent="Szukam dodatkowych miejsc w OpenStreetMap…";const q='[out:json][timeout:30];(nwr["shop"="second_hand"](50.18,18.90,50.34,19.18);nwr["shop"="vintage"](50.18,18.90,50.34,19.18);nwr["second_hand"~"^(yes|only)$"](50.18,18.90,50.34,19.18);nwr["shop"="clothes"]["name"~"second|lumpeks|ciucholand|szmateks|odzież używana|odziez uzywana|tania odzież|tania odziez|vintage|textil|biga|vive",i](50.18,18.90,50.34,19.18););out center tags;';for(const url of ["https://overpass-api.de/api/interpreter","https://overpass.kumi.systems/api/interpreter","https://overpass.private.coffee/api/interpreter"]){try{const r=await fetch(url,{method:"POST",body:"data="+encodeURIComponent(q)});if(!r.ok)continue;const d=await r.json();const extra=d.elements.map(e=>{const t=e.tags||{},lat=e.lat??e.center?.lat,lng=e.lon??e.center?.lng;if(lat==null||lng==null)return null;const name=t.name||"Second hand";return {name,city:"Katowice",type:t.shop==="vintage"||/vintage/i.test(name)?"Vintage":"Second hand",lat,lng,address:[t["addr:street"],t["addr:housenumber"]].filter(Boolean).join(" "),rating:"brak oceny",website:t.website||t["contact:website"]||""}}).filter(Boolean);const seen=new Set(places.map(p=>`${p.name}|${p.address}`));extra.forEach(p=>{if(!seen.has(`${p.name}|${p.address}`))places.push(p)});osmLoaded=true;status.textContent=`Gotowe — ${places.length} miejsc w bazie Katowic.`;render();loading=false;return}catch(e){}}status.textContent=`Gotowe — ${places.length} miejsc z lokalnej bazy. Nie udało się dociągnąć OSM.`;render();loading=false}
-render();loadOSM();
+async function loadOSM(force=false){
+  if(loading || (osmLoaded && !force)) return;
+  loading=true;
+  status.textContent="Szukam lumpeksów w OpenStreetMap…";
+  const bounds=map.getBounds();
+  const south=Math.max(-85,bounds.getSouth()), west=Math.max(-180,bounds.getWest()), north=Math.min(85,bounds.getNorth()), east=Math.min(180,bounds.getEast());
+  // For Poland-wide view use the official country area; for closer views use the visible map.
+  const nationwide=map.getZoom()<=7;
+  const scope=nationwide
+    ? 'area["ISO3166-1"="PL"][admin_level=2]->.pl;'
+    : `(${south.toFixed(4)},${west.toFixed(4)},${north.toFixed(4)},${east.toFixed(4)});`;
+  const body=nationwide
+    ? `(nwr["shop"="second_hand"](area.pl);nwr["shop"="vintage"](area.pl);nwr["second_hand"](area.pl);nwr["shop"="charity"](area.pl);nwr["shop"="clothes"]["name"~"second.?hand|lumpeks|ciucholand|szmateks|odzie[zż] używana|tania odzie[zż]|vintage|retro|tani armani|biga|vive|textil|textile|cream|outlet",i](area.pl);)`
+    : `(nwr["shop"="second_hand"]${scope}nwr["shop"="vintage"]${scope}nwr["second_hand"]${scope}nwr["shop"="charity"]${scope}nwr["shop"="clothes"]["name"~"second.?hand|lumpeks|ciucholand|szmateks|odzie[zż] używana|tania odzie[zż]|vintage|retro|tani armani|biga|vive|textil|textile|cream|outlet",i]${scope})`;
+  const q=`[out:json][timeout:${nationwide?120:45}];${nationwide?scope:''}${body}out center tags;`;
+  const endpoints=[
+    "https://overpass-api.de/api/interpreter",
+    "https://overpass.kumi.systems/api/interpreter",
+    "https://overpass.private.coffee/api/interpreter"
+  ];
+  let data=null;
+  for(const url of endpoints){
+    try{
+      const r=await fetch(url,{method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded; charset=UTF-8"},body:"data="+encodeURIComponent(q)});
+      if(r.ok){data=await r.json();break;}
+    }catch(e){}
+  }
+  if(data){
+    const existing=new Set(places.map(p=>`${p.name.toLowerCase()}|${(p.address||'').toLowerCase()}`));
+    const seenCoords=new Set(places.map(p=>keyFor(p)));
+    for(const e of (data.elements||[])){
+      const t=e.tags||{};
+      const lat=e.lat??e.center?.lat, lng=e.lon??e.center?.lon;
+      if(lat==null||lng==null) continue;
+      const name=t.name||"Second hand";
+      const address=[t["addr:street"],t["addr:housenumber"],t["addr:postcode"],t["addr:city"]].filter(Boolean).join(" ");
+      const k=`${name.toLowerCase()}|${address.toLowerCase()}`;
+      const ck=`${Number(lat).toFixed(5)},${Number(lng).toFixed(5)}`;
+      if(existing.has(k)||seenCoords.has(ck)) continue;
+      const city=t["addr:city"]||"";
+      const type=(t.shop==="vintage"||/vintage|retro/i.test(name))?"Vintage":"Second hand";
+      places.push({name,city,type,lat:+lat,lng:+lng,address,rating:t.stars||t.rating||"—",phone:t.phone||t["contact:phone"]||"",website:t.website||t["contact:website"]||"",opening_hours:t.opening_hours||"",source:"OpenStreetMap"});
+      existing.add(k);seenCoords.add(ck);
+    }
+    osmLoaded=true;
+    localStorage.setItem("secondmap_osm_cache",JSON.stringify(places.filter(p=>p.source==="OpenStreetMap")));
+    status.textContent=`Znaleziono ${places.length} miejsc. Dane OSM mogą być niepełne — dokładamy kolejne źródła.`;
+    render();
+  }else{
+    status.textContent=`Nie udało się połączyć z bazą OSM. Pokazuję zapisane ${places.length} miejsc.`;
+  }
+  loading=false;
+}
+
+// Restore the last OSM cache instantly, then refresh in the background.
+try{
+  const cached=JSON.parse(localStorage.getItem("secondmap_osm_cache")||"[]");
+  const existing=new Set(places.map(p=>`${p.name}|${p.address||""}`));
+  cached.forEach(p=>{const k=`${p.name}|${p.address||""}`;if(!existing.has(k)){places.push(p);existing.add(k)}});
+}catch(e){}
+
+render();
+loadOSM();
+map.on("moveend",()=>{ if(map.getZoom()>=8) loadOSM(true); });
 document.querySelectorAll(".chip").forEach(b=>b.onclick=()=>{document.querySelectorAll(".chip").forEach(x=>x.classList.remove("active"));b.classList.add("active");filter=b.dataset.filter;render()});document.getElementById("search").oninput=e=>{query=e.target.value.trim().toLowerCase();render()};document.getElementById("reset").onclick=()=>map.setView([50.2649,19.0238],11);document.getElementById("locate").onclick=()=>navigator.geolocation?.getCurrentPosition(pos=>map.setView([pos.coords.latitude,pos.coords.longitude],15),()=>alert("Nie udało się pobrać lokalizacji."));document.getElementById("addBtn").onclick=()=>document.getElementById("dialog").showModal();
 document.getElementById("placeForm").onsubmit=e=>{e.preventDefault();const p={name:document.getElementById("name").value,city:"Katowice",type:document.getElementById("type").value,lat:+document.getElementById("lat").value,lng:+document.getElementById("lng").value,address:"",rating:"brak oceny",source:"custom"};const c=JSON.parse(localStorage.getItem("lumpPlaces")||"[]");c.push(p);localStorage.setItem("lumpPlaces",JSON.stringify(c));places.push(p);render();document.getElementById("dialog").close();e.target.reset();map.setView([p.lat,p.lng],16)};
