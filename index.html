@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>SecondMap — second handy w Polsce</title>
+  <link rel="preconnect" href="https://unpkg.com">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="theme-color" content="#151515">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <a class="brand" href="#">Second<span>Map</span></a>
+    <div class="search">
+      <input id="search" placeholder="Szukaj miasta lub sklepu…" aria-label="Szukaj">
+      <button id="locate" title="Pokaż moją lokalizację">◎</button>
+    </div>
+    <button id="addBtn" class="add">+ Dodaj lumpeks</button>
+  </header>
+
+  <main>
+    <aside>
+      <div class="intro">
+        <p class="eyebrow">SECOND HAND • POLSKA</p>
+        <h1>Znajdź dobry<br>lumpeks w okolicy.</h1>
+        <p class="muted">Mapa sklepów z odzieżą używaną, vintage i outletów.</p>
+      </div>
+
+      <div class="filters">
+        <button class="chip active" data-filter="all">Wszystkie</button>
+        <button class="chip" data-filter="second hand">Second hand</button>
+        <button class="chip" data-filter="vintage">Vintage</button>
+        <button class="chip" data-filter="outlet">Outlet</button>
+      </div>
+
+      <div class="row">
+        <strong id="count">0 miejsc</strong>
+        <button id="reset" class="link">Pokaż całą Polskę</button>
+      </div>
+      <div id="list" class="list"></div>
+    </aside>
+    <section id="map"></section>
+  </main>
+
+  <dialog id="dialog">
+    <form method="dialog" id="placeForm">
+      <div class="dialogHead">
+        <div><p class="eyebrow">NOWE MIEJSCE</p><h2>Dodaj lumpeks</h2></div>
+        <button value="cancel" class="close">×</button>
+      </div>
+      <label>Nazwa<input id="name" required placeholder="np. Szafa Vintage"></label>
+      <label>Miasto<input id="city" required placeholder="np. Kraków"></label>
+      <label>Typ<select id="type"><option>Second hand</option><option>Vintage</option><option>Outlet</option></select></label>
+      <div class="coords">
+        <label>Szerokość geogr.<input id="lat" required type="number" step="any" placeholder="50.0647"></label>
+        <label>Długość geogr.<input id="lng" required type="number" step="any" placeholder="19.9450"></label>
+      </div>
+      <p class="hint">W prototypie nowe miejsca zapisują się tylko w tej przeglądarce.</p>
+      <button class="submit" value="default">Dodaj na mapę</button>
+    </form>
+  </dialog>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="app.js"></script>
+  <script>if("serviceWorker" in navigator){navigator.serviceWorker.register("sw.js")}</script>
+</body>
+</html>
