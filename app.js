@@ -26,7 +26,6 @@ const worldRing=[[-89,-179],[-89,179],[89,179],[89,-179],[-89,-179]];
 L.polygon([worldRing,polandRing],{
   stroke:false,fillColor:'#68717a',fillOpacity:.14,fillRule:'evenodd',interactive:false,className:'world-mask'
 }).addTo(map);
-L.polygon(polandRing,{color:'#ffffff',weight:1,opacity:.62,fill:false,interactive:false,className:'poland-border'}).addTo(map);
 
 const icon=()=>L.divIcon({className:"",html:'<div class="marker"><span>L</span></div>',iconSize:[30,30],iconAnchor:[15,29]});
 const status=document.getElementById("status");
